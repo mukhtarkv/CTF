@@ -1,7 +1,7 @@
 use crate::state::SharedState;
 use axum::{
     Router,
-    extract::{Query, State},
+    extract::Query,
     response::{Html, IntoResponse},
     routing::get,
 };
@@ -25,9 +25,6 @@ async fn handler_hello(Query(params): Query<HelloParams>) -> impl IntoResponse {
     Html(format!("Hello <strong>{name}</strong>"))
 }
 
-async fn handler_good_bye(State(state): State<SharedState>) -> impl IntoResponse {
-    // Acquire read lock and debug-print the entire AppState
-    let guard = state.read().unwrap();
-    println!("Current AppState: {:?}", *guard);
+async fn handler_good_bye() -> impl IntoResponse {
     Html(format!("Good bye!"))
 }

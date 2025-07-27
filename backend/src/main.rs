@@ -1,5 +1,5 @@
 pub use self::error::{Error, Result};
-use crate::{hello::routes_hello, state_handler::routes_kv};
+use crate::{hello::routes_hello, room::routes_room};
 use axum::{Router, error_handling::HandleErrorLayer, http::StatusCode, response::IntoResponse};
 use std::{borrow::Cow, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
@@ -9,8 +9,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod error;
 mod hello;
+mod room;
 mod state;
-mod state_handler;
 
 #[tokio::main]
 async fn main() {
@@ -35,7 +35,7 @@ async fn main() {
                 .layer(TraceLayer::new_for_http()),
         )
         .merge(routes_hello())
-        .merge(routes_kv())
+        .merge(routes_room())
         .with_state(Arc::clone(&shared_state));
 
     let listener = TcpListener::bind("127.0.0.1:8000").await.unwrap();
