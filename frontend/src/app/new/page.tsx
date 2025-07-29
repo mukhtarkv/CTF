@@ -1,5 +1,7 @@
+import New from "@/components/New";
+
 const NewPage = () => {
-  return <div className="flex">NewPage</div>;
+  return <New />;
 };
 
 export default NewPage;

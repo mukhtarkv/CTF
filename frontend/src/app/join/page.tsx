@@ -1,5 +1,7 @@
+import Join from "@/components/Join";
+
 const JoinPage = () => {
-  return <div className="flex">JoinPage</div>;
+  return <Join />;
 };
 
 export default JoinPage;
