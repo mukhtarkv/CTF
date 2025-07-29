@@ -6,12 +6,13 @@ use axum::{
     response::Json,
     routing::{delete, get, post},
 };
+use rand::{Rng, rng};
 use serde::Serialize;
 
 pub fn routes_room() -> Router<SharedState> {
     Router::new()
-        .route("/rooms/{key}", post(handler_create_room))
-        .route("/rooms/{key}", get(handler_get_room))
+        .route("/rooms", post(handler_create_room))
+        .route("/rooms/{key}/join", get(handler_get_room))
         .route("/rooms/{key}", delete(handler_delete_room))
         .route("/rooms", get(handler_list_rooms))
 }
@@ -23,13 +24,24 @@ struct CreateRoomResponse {
 }
 
 async fn handler_create_room(
-    Path(key): Path<String>,
     State(state): State<SharedState>,
 ) -> Result<Json<CreateRoomResponse>, StatusCode> {
-    match create_room(&state, &key) {
-        Ok(id) => Ok(Json(CreateRoomResponse { key, id })),
-        Err(_) => Err(StatusCode::CONFLICT),
+    let mut rng = rng();
+    let key;
+    let id;
+    // Try generating until we find a non-conflicting PIN
+    loop {
+        let candidate = format!("{:06}", rng.random_range(0..1_000_000));
+        match create_room(&state, &candidate) {
+            Ok(generated_id) => {
+                key = candidate;
+                id = generated_id;
+                break;
+            }
+            Err(_) => continue,
+        }
     }
+    Ok(Json(CreateRoomResponse { key, id }))
 }
 
 #[derive(Serialize)]
