@@ -8,6 +8,7 @@ use axum::{
 };
 use rand::{Rng, rng};
 use serde::Serialize;
+use tracing::debug;
 
 pub fn routes_room() -> Router<SharedState> {
     Router::new()
@@ -30,6 +31,7 @@ async fn handler_create_room(
     let key;
     let id;
     // Try generating until we find a non-conflicting PIN
+    debug!("Attempting to create a room");
     loop {
         let candidate = format!("{:06}", rng.random_range(0..1_000_000));
         match create_room(&state, &candidate) {
@@ -41,6 +43,7 @@ async fn handler_create_room(
             Err(_) => continue,
         }
     }
+    debug!("Created a room with key={} and id={}", key, id);
     Ok(Json(CreateRoomResponse { key, id }))
 }
 
