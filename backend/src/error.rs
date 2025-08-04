@@ -1,44 +1,40 @@
-// This is the root level error/result file
+use axum::{
+    Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use serde_json::json;
+use std::{error::Error as StdError, fmt};
 
-// This way we can force all application errors to be
-// our custom error type.
-
-// This will allow us to map errors to HTTP responses
-// and custom error messages exposed to the client.
-
-use std::fmt::Formatter;
-
-// Application wide result with root level error
-pub type Result<T> = core::result::Result<T, Error>;
-
-// Root level error
+/// Application error type
 #[derive(Debug)]
 pub enum Error {
-    // This is how we will wrap other error types from our
-    // application.
-
-    // For example this is how we can wrap errors from our
-    // error module.
-
-    // Model(model::Error)
+    RoomNotFound,
 }
 
-// Implementing the From trait allows errors to be seamlessly
-// recast as our main error type.
-
-// For example by implementing this trait on Error,
-// we can convert a model::Error to our root Error
-
-//impl From<model::Error> for Error {
-//    fn from(val: model::Error) -> {
-//        Self::Model(val)
-//    }
-//}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, fmt: &mut Formatter) -> std::result::Result<(), core::fmt::Error> {
-        write!(fmt, "{self:?}")
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::RoomNotFound => write!(f, "room not found"),
+        }
     }
 }
 
-impl std::error::Error for Error {}
+impl StdError for Error {}
+
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        match self {
+            Error::RoomNotFound => {
+                let body = Json(json!({
+                    "error": "room_not_found",
+                    "message": "the requested room does not exist"
+                }));
+                (StatusCode::NOT_FOUND, body).into_response()
+            }
+        }
+    }
+}
+
+/// Convenient result alias for this crate.
+pub type Result<T> = std::result::Result<T, Error>;

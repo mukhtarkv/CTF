@@ -1,13 +1,13 @@
-pub use self::error::{Error, Result};
 use crate::{hello::routes_hello, room::routes_room};
 use axum::{
     Router,
     error_handling::HandleErrorLayer,
+    extract::Extension,
     http::{HeaderValue, StatusCode},
     response::IntoResponse,
 };
 use std::{borrow::Cow, sync::Arc, time::Duration};
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, signal};
 use tower::{BoxError, ServiceBuilder};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -38,11 +38,10 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
     let shared_state = state::SharedState::default();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let app = Router::new()
-        // Add middleware to all routes
         .layer(
             ServiceBuilder::new()
-                // Handle errors from middleware
                 .layer(HandleErrorLayer::new(handle_error))
                 .load_shed()
                 .concurrency_limit(1024)
@@ -52,11 +51,22 @@ async fn main() {
         .merge(routes_hello())
         .merge(routes_room())
         .with_state(Arc::clone(&shared_state))
+        .layer(Extension(shutdown_rx.clone()))
         .layer(cors);
 
     let listener = TcpListener::bind("0.0.0.0:8000").await.unwrap();
     debug!("listening on {}", listener.local_addr().unwrap());
-    axum::serve(listener, app).await.unwrap();
+
+    let shutdown_signal = async move {
+        signal::ctrl_c().await.expect("failed to listen for ctrl-c");
+        debug!("received ctrl-c, notifying websocket handlers");
+        let _ = shutdown_tx.send(true);
+    };
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal)
+        .await
+        .unwrap();
 }
 
 async fn handle_error(error: BoxError) -> impl IntoResponse {
