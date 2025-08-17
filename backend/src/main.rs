@@ -15,6 +15,7 @@ use tracing::debug;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod error;
+mod game;
 mod hello;
 mod room;
 mod state;
