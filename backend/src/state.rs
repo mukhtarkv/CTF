@@ -3,13 +3,15 @@ use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
+use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 pub type SharedState = Arc<RwLock<AppState>>;
 
 #[derive(Default, Debug)]
 pub struct AppState {
-    db: HashMap<String, Bytes>,
+    pub db: HashMap<String, Bytes>,
+    pub room_senders: HashMap<String, Vec<UnboundedSender<String>>>,
 }
 
 /// Creates a new room with the given key if it does not exist, returning its unique ID or an error.
@@ -47,4 +49,22 @@ pub fn list_rooms(state: &SharedState) -> Vec<(String, String)> {
         .iter()
         .map(|(k, v)| (k.clone(), String::from_utf8_lossy(&v[..]).to_string()))
         .collect()
+}
+
+/// Register a websocket sender for a room so we can broadcast to it later.
+pub fn add_ws_sender(state: &SharedState, key: &str, sender: UnboundedSender<String>) {
+    let mut guard = state.write().unwrap();
+    guard
+        .room_senders
+        .entry(key.to_string())
+        .or_default()
+        .push(sender);
+}
+
+/// Broadcast a text message to all active senders in the room, pruning dead ones.
+pub fn broadcast_to_room(state: &SharedState, key: &str, msg: &str) {
+    let mut guard = state.write().unwrap();
+    if let Some(senders) = guard.room_senders.get_mut(key) {
+        senders.retain(|tx| tx.send(msg.to_string()).is_ok());
+    }
 }
