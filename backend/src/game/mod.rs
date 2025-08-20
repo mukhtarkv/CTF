@@ -3,7 +3,7 @@ mod player_move;
 use core::f32;
 
 use itertools::Itertools;
-use player_move::Move;
+pub use player_move::Move;
 
 #[derive(Debug, Clone)]
 struct Map<const N: usize> {
@@ -58,7 +58,7 @@ impl<const N: usize> Map<N> {
 }
 
 #[derive(Debug, Clone)]
-struct GameState<const N: usize> {
+pub struct GameState<const N: usize> {
     scores: [usize; 2],
 
     player_spawn_x: [f32; N],
@@ -145,6 +145,15 @@ impl<const N: usize> GameState<N> {
 
         self.player_x[player_index] = reset_x;
         self.player_y[player_index] = reset_y;
+
+        let flag_captors = self.flag_captors;
+        for (team_index, flag_captor) in flag_captors.iter().enumerate() {
+            if let Some(flag_captor) = flag_captor {
+                if *flag_captor == player_index {
+                    self.flag_captors[team_index] = None;
+                }
+            }
+        }
     }
 
     pub fn step(&mut self, player_moves: [Move; N]) {
@@ -268,11 +277,6 @@ impl<const N: usize> GameState<N> {
                     self.reset_player(player_index);
                 }
             }
-
-            println!(
-                "Collision between {} and {}",
-                player_index_0, player_index_1
-            );
         }
 
         // Handle flag captures
@@ -328,21 +332,22 @@ impl<const N: usize> GameState<N> {
                 let left = self.player_x[*player_index];
                 if self.get_is_player_on_home_side(*player_index, left) {
                     self.flag_captors[team_index] = None;
-                    println!("Score for team {}!", self.get_player_team(*player_index));
+                    let scoring_team_index = self.get_player_team(*player_index);
+                    self.scores[scoring_team_index] += 1;
                 }
             }
         }
     }
 
     pub fn pretty_print(&self) {
-        println!(
-            "Blue {:>2} {:->15} Red {:>2}",
+        print!(
+            "Blue {:>2} {:->15} Red {:>2}\r\n",
             self.scores[0], "", self.scores[1]
         );
 
         let mut grid: Vec<Vec<char>> = vec![vec![' '; self.width]; self.height];
 
-        println!("┌{:->width$}┐", "", width = self.width);
+        print!("┌{:->width$}┐\r\n", "", width = self.width);
 
         // Print players
         let player_x_iter = self.player_x.iter();
@@ -382,10 +387,10 @@ impl<const N: usize> GameState<N> {
 
         grid.iter().for_each(|row| {
             let string: String = row.iter().collect();
-            println!("|{}|", string);
+            print!("|{}|\r\n", string);
         });
 
-        println!("└{:->width$}┘", "", width = self.width);
+        print!("└{:->width$}┘\r\n", "", width = self.width);
     }
 }
 

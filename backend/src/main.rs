@@ -1,5 +1,5 @@
-pub use self::error::{Error, Result};
-use crate::{hello::routes_hello, room::routes_room};
+// Import from our own library
+use ctf_backend::{Error, Result, hello::routes_hello, room::routes_room, state};
 use axum::{
     Router,
     error_handling::HandleErrorLayer,
@@ -13,12 +13,6 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::debug;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-mod error;
-mod game;
-mod hello;
-mod room;
-mod state;
 
 #[tokio::main]
 async fn main() {
