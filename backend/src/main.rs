@@ -1,5 +1,4 @@
 // Import from our own library
-use ctf_backend::{Error, Result, hello::routes_hello, room::routes_room, state};
 use axum::{
     Router,
     error_handling::HandleErrorLayer,
@@ -7,6 +6,7 @@ use axum::{
     http::{HeaderValue, StatusCode},
     response::IntoResponse,
 };
+use ctf_backend::{hello::routes_hello, room::routes_room, state};
 use std::{borrow::Cow, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, signal};
 use tower::{BoxError, ServiceBuilder};
