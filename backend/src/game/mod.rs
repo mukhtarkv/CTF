@@ -339,6 +339,12 @@ impl<const N: usize> GameState<N> {
         }
     }
 
+    pub fn positions(&self) -> Vec<(f32, f32)> {
+        (0..N)
+            .map(|i| (self.player_x[i], self.player_y[i]))
+            .collect()
+    }
+
     pub fn pretty_print(&self) {
         print!(
             "Blue {:>2} {:->15} Red {:>2}\r\n",
