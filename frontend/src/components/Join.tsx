@@ -17,7 +17,7 @@ const Join = () => {
     const gameInfo = await joinGame(key);
     // TODO: toast no game info
     if (!gameInfo) return;
-    router.push(`/play/${gameInfo.key}`);
+    router.push(`/play/${gameInfo.room_key}`);
   };
 
   const isDisabled = isEmpty(key) || isEmpty(name);

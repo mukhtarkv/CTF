@@ -13,7 +13,7 @@ const Home = () => {
     // TODO: toast no game info
     if (!gameInfo) return;
 
-    router.push(`/host/${gameInfo.id}`);
+    router.push(`/host/${gameInfo.room_key}`);
   };
 
   return (

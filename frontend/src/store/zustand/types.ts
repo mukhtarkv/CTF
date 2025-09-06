@@ -6,14 +6,13 @@ export interface GameStoreData {
 }
 
 export interface GameInfo {
-  key: string;
-  id: string;
+  room_key: string;
 }
 
 export interface GameStoreActions {
-  joinGame: (gameCode: string) => Promise<GameInfo>;
-  createGame: () => Promise<GameInfo>;
-  fetchGame: (gameCode: string) => Promise<GameInfo>;
+  joinGame: (gameCode: string) => Promise<GameInfo | undefined>;
+  createGame: () => Promise<GameInfo | undefined>;
+  fetchGame: (gameCode: string) => Promise<GameInfo | undefined>;
 
   reset: () => void;
 }

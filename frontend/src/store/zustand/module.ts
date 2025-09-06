@@ -32,36 +32,18 @@ export const useGameStore = create<GameStore>()(
           }
         },
 
-        fetchGame: async (key: string) => {
-          try {
-            const response = await axios.get(
-              `${config.apiBaseUrl}/rooms/${key}/join`,
-            );
-
-            const result: GameInfo = response.data;
-            set({ currentGameInfo: result });
-            return result;
-          } catch (error) {
-            if (axios.isAxiosError(error)) {
-              console.error(error);
-            }
-          }
+        joinGame: async (key: string) => {
+          // For joining, we just need to set the room key and connect via WebSocket
+          const gameInfo: GameInfo = { room_key: key };
+          set({ currentGameInfo: gameInfo });
+          return gameInfo;
         },
 
-        joinGame: async (key: string) => {
-          try {
-            const response = await axios.get(
-              `${config.apiBaseUrl}/rooms/${key}/join`,
-            );
-
-            const result: GameInfo = response.data;
-            set({ currentGameInfo: result });
-            return result;
-          } catch (error) {
-            if (axios.isAxiosError(error)) {
-              console.error(error);
-            }
-          }
+        fetchGame: async (key: string) => {
+          // For fetching, we just need to set the room key
+          const gameInfo: GameInfo = { room_key: key };
+          set({ currentGameInfo: gameInfo });
+          return gameInfo;
         },
 
         reset: () => set(initialState),
