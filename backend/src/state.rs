@@ -77,23 +77,33 @@ pub fn add_ws_sender(state: &SharedState, room_key: &str, sender: UnboundedSende
 pub fn add_player(state: &SharedState, room_key: &str) -> i32 {
     let mut guard = state.write().unwrap();
 
-    // Scope 1: work with room_state, then end the borrow
-    let new_player_id = {
-        let room = guard.room_state.entry(room_key.to_string()).or_default();
-        let id = room.keys().max().copied().map_or(0, |max_id| max_id + 1);
-        room.insert(id, Move::Stay);
-        id
-    }; // <-- 'room' (&mut ...) dropped here
-
-    // Scope 2: now it's safe to mutably borrow room_players
-    {
-        let order = guard.room_players.entry(room_key.to_string()).or_default();
-        if !order.contains(&new_player_id) {
-            order.push(new_player_id);
+    // Find first available slot from 0-3
+    let mut available_id = None;
+    let order = guard.room_players.entry(room_key.to_string()).or_default();
+    for id in 0..4 {
+        if !order.contains(&id) {
+            available_id = Some(id);
+            break;
         }
-    } // <-- 'order' dropped here
+    }
 
-    new_player_id
+    match available_id {
+        Some(id) => {
+            // Add to room state
+            let room = guard.room_state.entry(room_key.to_string()).or_default();
+            room.insert(id, Move::Stay);
+
+            // Add to player order
+            let order = guard.room_players.entry(room_key.to_string()).or_default();
+            order.push(id);
+
+            id
+        }
+        None => {
+            // Room is full, return -1 to indicate failure
+            -1
+        }
+    }
 }
 
 pub fn update_player_state(state: &SharedState, room_key: &str, player_id: i32, new_move: Move) {
@@ -108,6 +118,20 @@ pub fn update_player_state(state: &SharedState, room_key: &str, player_id: i32, 
 pub fn get_players_state(state: &SharedState, room_key: &str) -> Option<HashMap<i32, Move>> {
     let guard = state.read().unwrap();
     guard.room_state.get(room_key).cloned()
+}
+
+pub fn remove_player(state: &SharedState, room_key: &str, player_id: i32) {
+    let mut guard = state.write().unwrap();
+
+    // Remove from room_state
+    if let Some(room) = guard.room_state.get_mut(room_key) {
+        room.remove(&player_id);
+    }
+
+    // Remove from room_players order
+    if let Some(order) = guard.room_players.get_mut(room_key) {
+        order.retain(|&id| id != player_id);
+    }
 }
 
 /// Broadcast a text message to all active senders in the room, pruning dead ones.
@@ -165,21 +189,71 @@ pub fn ensure_room_loop(state: &SharedState, room_key: &str) {
                 }
             }
 
-            // Re-lock to mutate the game and snapshot positions
-            let positions_json_opt = {
+            // Re-lock to mutate the game and snapshot positions, check for score reset
+            let (positions_json_opt, should_reset_moves, players_to_reset_moves) = {
                 let mut guard = state_cloned.write().unwrap();
                 if let Some(game) = guard.room_game.get_mut(&room_key_string) {
-                    game.step(moves_arr);
+                    let old_scores = game.get_scores();
+                    let players_to_reset_moves = game.step(moves_arr);
+                    let new_scores = game.get_scores();
+
+                    // Check if score changed (someone scored)
+                    let score_changed = old_scores != new_scores;
+
+                    // Reset moves for players who were caught in enemy territory
                     let positions = game.positions();
+                    let flag_captors = game.get_flag_captors(); // We need to add this method
                     let payload = serde_json::json!({
                         "type": "positions",
                         "players": positions,
+                        "flag_captors": flag_captors,
+                        "scores": game.get_scores(), // We need to add this method too
                     });
-                    Some(payload.to_string())
+                    (
+                        Some(payload.to_string()),
+                        score_changed,
+                        players_to_reset_moves,
+                    )
                 } else {
-                    None
+                    (None, false, Vec::new())
                 }
             };
+
+            // Reset all player moves to Stay if someone scored
+            if should_reset_moves {
+                let mut guard = state_cloned.write().unwrap();
+                if let Some(room_state) = guard.room_state.get_mut(&room_key_string) {
+                    for (_, player_move) in room_state.iter_mut() {
+                        *player_move = Move::Stay;
+                    }
+                }
+                println!("🔄 All player moves reset to Stay after score!");
+            }
+
+            // Reset moves for players who were caught in enemy territory (outside the main lock)
+            if !players_to_reset_moves.is_empty() {
+                let mut guard = state_cloned.write().unwrap();
+
+                // First get the order mapping
+                let order = guard
+                    .room_players
+                    .get(&room_key_string)
+                    .cloned()
+                    .unwrap_or_default();
+
+                // Then reset moves for each player
+                for &player_index in &players_to_reset_moves {
+                    if let Some(&player_id) = order.get(player_index) {
+                        if let Some(room_state) = guard.room_state.get_mut(&room_key_string) {
+                            room_state.insert(player_id, Move::Stay);
+                            println!(
+                                "🔄 Reset move to Stay for player {} (index {})",
+                                player_id, player_index
+                            );
+                        }
+                    }
+                }
+            }
 
             // Broadcast after lock is released
             if let Some(json) = positions_json_opt {

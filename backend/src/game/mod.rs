@@ -156,7 +156,20 @@ impl<const N: usize> GameState<N> {
         }
     }
 
-    pub fn step(&mut self, player_moves: [Move; N]) {
+    pub fn step(&mut self, player_moves: [Move; N]) -> Vec<usize> {
+        // Debug: Print current positions before processing
+        println!("=== GAME STEP ===");
+        for i in 0..N {
+            println!(
+                "Player {}: ({:.2}, {:.2}) Team: {}",
+                i,
+                self.player_x[i],
+                self.player_y[i],
+                self.get_player_team(i)
+            );
+        }
+        println!("Flag captors: {:?}", self.flag_captors);
+
         for (player_index, player_move) in player_moves.iter().enumerate() {
             let (player_dx, player_dy) = player_move.to_coords();
 
@@ -165,81 +178,34 @@ impl<const N: usize> GameState<N> {
 
             let speed = GameState::<N>::PLAYER_SPEED;
 
-            // Potentially illegal states
-            let mut new_player_x = player_x + ((player_dx as f32) * speed);
-            let mut new_player_y = player_y + ((player_dy as f32) * speed);
+            // Calculate new position with bounds checking
+            let new_x = (player_x + ((player_dx as f32) * speed))
+                .max(0.0)
+                .min((self.width as f32) - GameState::<N>::PLAYER_SIZE);
+            let new_y = (player_y + ((player_dy as f32) * speed))
+                .max(0.0)
+                .min((self.height as f32) - GameState::<N>::PLAYER_SIZE);
 
-            // Handle bounds
-            let is_out_top = new_player_y < 0.0;
-            let is_out_left = new_player_x < 0.0;
-            let is_out_right = (new_player_x + GameState::<N>::PLAYER_SIZE) > (self.width as f32);
-            let is_out_bottom = (new_player_y + GameState::<N>::PLAYER_SIZE) > (self.height as f32);
-
-            if is_out_top {
-                new_player_y = 0.0;
-            }
-            if is_out_left {
-                new_player_x = 0.0;
-            }
-            if is_out_right {
-                new_player_x = (self.width as f32) - GameState::<N>::PLAYER_SIZE;
-            }
-            if is_out_bottom {
-                new_player_y = (self.height as f32) - GameState::<N>::PLAYER_SIZE;
-            }
-
-            // Handle wall collisions
-            let player_left = player_x as f32;
-            let player_top = player_y as f32;
-            let player_right = player_x + GameState::<N>::PLAYER_SIZE;
-            let player_bottom = player_y + GameState::<N>::PLAYER_SIZE;
-
-            let wall_x_iter = self.wall_x.iter();
-            let wall_y_iter = self.wall_y.iter();
-            for (x, y) in wall_x_iter.zip(wall_y_iter) {
-                let wall_left = *x as f32;
-                let wall_top = *y as f32;
-                let wall_right = wall_left + GameState::<N>::WALL_SIZE;
-                let wall_bottom = wall_top + GameState::<N>::WALL_SIZE;
-
-                let is_collide_x = player_left < wall_right && wall_left < player_right;
-                let is_collide_y = player_top < wall_bottom && wall_top < player_bottom;
-                let is_collide = is_collide_x && is_collide_y;
-
-                if !is_collide {
-                    continue;
+            // Check if the new position would collide with walls
+            if !self.would_collide_with_walls(new_x, new_y) {
+                // No collision, move to new position
+                self.player_x[player_index] = new_x;
+                self.player_y[player_index] = new_y;
+            } else {
+                // Try sliding along walls
+                // Try horizontal movement only
+                if player_dx != 0 && !self.would_collide_with_walls(new_x, player_y) {
+                    self.player_x[player_index] = new_x;
                 }
-
-                // Overlaps are relative to the four sides of the wall
-                let top_overlap = player_bottom - wall_top;
-                let bottom_overlap = wall_bottom - player_top;
-                let left_overlap = player_right - wall_left;
-                let right_overlap = wall_right - player_left;
-
-                // Minimum overlap is the one that needs to be adjusted
-                let min_overlap = [top_overlap, bottom_overlap, left_overlap, right_overlap]
-                    .iter()
-                    .fold(f32::INFINITY, |acc, &x| acc.min(x));
-
-                if min_overlap == top_overlap {
-                    new_player_y = wall_top - GameState::<N>::PLAYER_SIZE;
-                }
-                if min_overlap == bottom_overlap {
-                    new_player_y = wall_bottom;
-                }
-                if min_overlap == left_overlap {
-                    new_player_x = wall_left - GameState::<N>::PLAYER_SIZE;
-                }
-                if min_overlap == right_overlap {
-                    new_player_x = wall_right;
+                // Try vertical movement only
+                if player_dy != 0 && !self.would_collide_with_walls(player_x, new_y) {
+                    self.player_y[player_index] = new_y;
                 }
             }
-
-            self.player_x[player_index] = new_player_x;
-            self.player_y[player_index] = new_player_y;
         }
 
         // Handle player collisions
+        let players_to_reset_moves = Vec::new();
         let player_indices: [usize; N] = std::array::from_fn(|i| i);
         for pair in player_indices.iter().combinations(2) {
             let player_index_0 = *pair[0];
@@ -272,56 +238,63 @@ impl<const N: usize> GameState<N> {
                 continue;
             }
 
-            for (player_index, left) in [player_0_left, player_1_left].iter().enumerate() {
+            // Track which players need their moves reset
+            let mut players_to_reset_moves = Vec::new();
+
+            let actual_indices = [player_index_0, player_index_1];
+            for (i, left) in [player_0_left, player_1_left].iter().enumerate() {
+                let player_index = actual_indices[i];
                 if !self.get_is_player_on_home_side(player_index, *left) {
                     self.reset_player(player_index);
+                    players_to_reset_moves.push(player_index);
+                    players_to_reset_moves.push(player_index);
                 }
             }
+
+            // Return the list of players whose moves should be reset
+            return players_to_reset_moves;
         }
+
+        // No players need move reset - continue with flag captures
 
         // Handle flag captures
         for player_index in player_indices {
+            let player_x = self.player_x[player_index];
+            let player_y = self.player_y[player_index];
+            let player_team = self.get_player_team(player_index);
+
             for team_index in [0, 1] {
-                let player_team = self.get_player_team(player_index);
-                let is_flag_captured = self.get_flag_captor(team_index).is_some();
+                // Skip if trying to capture own team's flag
                 if player_team == team_index {
-                    // Cannot capture own flag
-                    continue;
-                }
-                if is_flag_captured {
-                    // Unavailable for capture
                     continue;
                 }
 
-                let player_x = self.player_x[player_index];
-                let player_y = self.player_y[player_index];
+                // Skip if flag is already captured
+                if self.get_flag_captor(team_index).is_some() {
+                    continue;
+                }
 
                 let flag_spawn_x = self.flag_spawn_x[team_index] as f32;
                 let flag_spawn_y = self.flag_spawn_y[team_index] as f32;
 
-                let player_left = player_x;
-                let player_top = player_y;
-                let player_right = player_left + GameState::<N>::PLAYER_SIZE;
-                let player_bottom = player_top + GameState::<N>::PLAYER_SIZE;
+                // Calculate distance between player center and flag center
+                let player_center_x = player_x + GameState::<N>::PLAYER_SIZE / 2.0;
+                let player_center_y = player_y + GameState::<N>::PLAYER_SIZE / 2.0;
+                let flag_center_x = flag_spawn_x + GameState::<N>::FLAG_SIZE / 2.0;
+                let flag_center_y = flag_spawn_y + GameState::<N>::FLAG_SIZE / 2.0;
 
-                let flag_left = flag_spawn_x;
-                let flag_top = flag_spawn_y;
-                let flag_right = flag_left + GameState::<N>::FLAG_SIZE;
-                let flag_bottom = flag_top + GameState::<N>::FLAG_SIZE;
+                let distance = ((player_center_x - flag_center_x).powi(2)
+                    + (player_center_y - flag_center_y).powi(2))
+                .sqrt();
+                let capture_distance = 1.2; // Generous capture distance
 
-                let is_collide_x = player_left < flag_right && flag_left < player_right;
-                let is_collide_y = player_top < flag_bottom && flag_top < player_bottom;
-                let is_collide = is_collide_x && is_collide_y;
-
-                if !is_collide {
-                    continue;
+                if distance <= capture_distance {
+                    self.flag_captors[team_index] = Some(player_index);
+                    println!(
+                        "🚩 Player {} captured team {}'s flag! Distance: {:.2}",
+                        player_index, team_index, distance
+                    );
                 }
-
-                self.flag_captors[team_index] = Some(player_index);
-                println!(
-                    "Player {} is capturing team {}'s flag",
-                    player_index, team_index
-                );
             }
         }
 
@@ -334,15 +307,62 @@ impl<const N: usize> GameState<N> {
                     self.flag_captors[team_index] = None;
                     let scoring_team_index = self.get_player_team(*player_index);
                     self.scores[scoring_team_index] += 1;
+                    println!(
+                        "🎯 SCORE! Player {} scored for team {}! New scores: {:?}",
+                        player_index, scoring_team_index, self.scores
+                    );
+
+                    // Reset all players to spawn positions after a score
+                    for i in 0..N {
+                        self.player_x[i] = self.player_spawn_x[i];
+                        self.player_y[i] = self.player_spawn_y[i];
+                    }
+                    println!("🔄 All players reset to spawn positions after score!");
                 }
             }
         }
+
+        println!("Final flag captors: {:?}", self.flag_captors);
+        println!("=================");
+
+        // Return list of players whose moves should be reset
+        players_to_reset_moves
+    }
+
+    fn would_collide_with_walls(&self, x: f32, y: f32) -> bool {
+        let player_left = x;
+        let player_top = y;
+        let player_right = x + GameState::<N>::PLAYER_SIZE;
+        let player_bottom = y + GameState::<N>::PLAYER_SIZE;
+
+        for (wall_x, wall_y) in self.wall_x.iter().zip(self.wall_y.iter()) {
+            let wall_left = *wall_x as f32;
+            let wall_top = *wall_y as f32;
+            let wall_right = wall_left + GameState::<N>::WALL_SIZE;
+            let wall_bottom = wall_top + GameState::<N>::WALL_SIZE;
+
+            let is_collide_x = player_left < wall_right && wall_left < player_right;
+            let is_collide_y = player_top < wall_bottom && wall_top < player_bottom;
+
+            if is_collide_x && is_collide_y {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn positions(&self) -> Vec<(f32, f32)> {
         (0..N)
             .map(|i| (self.player_x[i], self.player_y[i]))
             .collect()
+    }
+
+    pub fn get_flag_captors(&self) -> [Option<usize>; 2] {
+        self.flag_captors
+    }
+
+    pub fn get_scores(&self) -> [usize; 2] {
+        self.scores
     }
 
     pub fn pretty_print(&self) {
@@ -381,7 +401,7 @@ impl<const N: usize> GameState<N> {
             let flag_captor = self.get_flag_captor(team_index);
             match flag_captor {
                 // TODO: draw when it's been captured
-                Some(player_index) => (),
+                Some(_player_index) => (),
                 None => {
                     let flag_x = self.flag_spawn_x[team_index];
                     let flag_y = self.flag_spawn_y[team_index];
