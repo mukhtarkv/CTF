@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::game::Move as GameMove;
 use crate::state::{
     SharedState, add_player, add_ws_sender, broadcast_to_room, create_room, ensure_room_loop,
-    get_players_state, get_room_state, list_rooms, update_player_state,
+    get_players_state, get_room_state, list_rooms, remove_player, update_player_state,
 };
 use axum::{
     Router,
@@ -136,6 +136,15 @@ async fn handle_socket(
     // Notify others that a player joined
     let player_id = if role == "player" {
         let player_id = add_player(&state, &room_key);
+        if player_id == -1 {
+            // Room is full, close connection
+            let _ = socket
+                .send(Message::text(
+                    r#"{"type":"error","message":"Room is full"}"#,
+                ))
+                .await;
+            return;
+        }
         let joined = ServerEvent::UserJoined {
             session_id: session_id.clone(),
             player_id,
@@ -197,6 +206,7 @@ async fn handle_socket(
 
     // Connection is dropping; notify others based on role.
     if role == "player" {
+        remove_player(&state, &room_key, player_id);
         let left = ServerEvent::UserLeft {
             session_id: session_id.clone(),
         };
