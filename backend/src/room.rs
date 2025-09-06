@@ -1,8 +1,8 @@
 use crate::error::Error;
 use crate::game::Move as GameMove;
 use crate::state::{
-    SharedState, add_player, add_ws_sender, broadcast_to_room, create_room, get_players_state,
-    get_room_state, list_rooms, update_player_state,
+    SharedState, add_player, add_ws_sender, broadcast_to_room, create_room, ensure_room_loop,
+    get_players_state, get_room_state, list_rooms, update_player_state,
 };
 use axum::{
     Router,
@@ -160,9 +160,7 @@ async fn handle_socket(
                                 if role == "host" {
                                     let game_started = ServerEvent::GameStarted { started_by: session_id.clone() };
                                     broadcast_to_room(&state, &room_key, &serde_json::to_string(&game_started).unwrap());
-                                    // TODO: add game loop logic here
-                                    // game logic needs to broadcast to room new state
-                                    // use get_players_state function
+                                    ensure_room_loop(&state, &room_key);
                                 }
                             }
                             Ok(ClientEvent::Chat { content }) => {
